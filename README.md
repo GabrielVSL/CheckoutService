@@ -12,7 +12,7 @@
 
 <br />
 
-<img src="./docs/portal-hero.png" alt="Portal Unificado integrando o CheckoutService" width="100%" />
+<img src="./docs/shop-preview.png" alt="Tela de Loja e Checkout (PAC/SEDEX) consumindo o CheckoutService" width="100%" />
 
 </div>
 
@@ -85,27 +85,11 @@ Durante a auditoria de qualidade e preparação para deploy público (Render + N
 
 ---
 
-## Como Executar Localmente e em Produção
+## Infraestrutura & Deploy
 
-### Localmente (H2 em memória — zero configuração)
-```bash
-git clone https://github.com/GabrielVSL/CheckoutService.git
-cd CheckoutService
-
-# Executar os 21 testes (unitários, integração, segurança e anti-IDOR)
-mvn test
-
-# Subir a API na porta padrão 8081
-mvn spring-boot:run
-```
-
-> Para inspecionar Swagger ou H2 **apenas localmente**, inicie com `SWAGGER_ENABLED=true` e/ou `H2_CONSOLE_ENABLED=true`.
-
-### Produção (Docker no Render + Neon PostgreSQL)
-O projeto detecta o banco automaticamente: basta configurar as variáveis listadas em [`.env.example`](.env.example) no painel do Render (`Runtime: Docker`, `Health Check Path: /health`):
-- `SPRING_DATASOURCE_URL=jdbc:postgresql://<host-neon>/checkoutdb?sslmode=require`
-- `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`
-- `INTERNAL_API_KEY` *(mesmo valor configurado no BFF)* e `TRUST_PROXY_HEADERS=true`
+- **Runtime:** container **Docker** multi-stage (`eclipse-temurin:21-jre-alpine`), usuário não-root (`appuser`) e JVM otimizada (`-XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC`) no **Render**.
+- **Banco de Dados:** **Neon PostgreSQL** (`checkoutdb` com SSL obrigatório e pool HikariCP configurado para *scale-to-zero*), mantendo H2 em memória isolado para a suíte de testes automatizados.
+- **Segurança de borda:** consumido exclusivamente pelo BFF ([ItauBootcamp](https://github.com/GabrielVSL/ItauBootcamp)) via `X-Internal-Api-Key`, com `H2_CONSOLE_ENABLED=false`, `SWAGGER_ENABLED=false` e monitoramento via `GET /health`.
 
 ---
 
