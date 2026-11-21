@@ -1,193 +1,117 @@
-# E-commerce Checkout API — Design Patterns (GoF) & SOLID na Prática
+<div align="center">
 
-![Java 21](https://img.shields.io/badge/Java-21-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
-![Spring Boot 3.4](https://img.shields.io/badge/Spring_Boot-3.4.3-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)
-![OpenAPI 3](https://img.shields.io/badge/Swagger-OpenAPI_3-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)
-![H2 Database](https://img.shields.io/badge/H2-In--Memory_DB-004088?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-15_Passing-2ea44f?style=for-the-badge)
+# CheckoutService — API REST de Checkout (Design Patterns GoF & SOLID)
 
-API RESTful de **Checkout de E-commerce** projetada como referência arquitetural para demonstrar como **Padrões de Projeto (Gang of Four — GoF)** e os princípios **SOLID** resolvem problemas reais de acoplamento, extensibilidade e manutenção em aplicações **Java 21** com **Spring Boot 3**.
+**Microsserviço Java 21 / Spring Boot 3 projetado para eliminar "God Classes" de checkout utilizando Facade, Chain of Responsibility, Strategy e Singleton com segurança de produção, isolamento por sessão e banco híbrido (Neon PostgreSQL / H2).**
 
----
+[![Java 21](https://img.shields.io/badge/Java-21_LTS-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](https://openjdk.org/)
+[![Spring Boot 3.4](https://img.shields.io/badge/Spring_Boot-3.4.3-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![PostgreSQL](https://img.shields.io/badge/Neon-PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://neon.tech/)
+[![Docker](https://img.shields.io/badge/Docker-Render_Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Tests](https://img.shields.io/badge/Tests-21_Passing-10B981?style=for-the-badge)](#testes-automatizados)
 
-## Contexto: Desafio de Projeto DIO
+<br />
 
-Construído para o desafio ***Explorando Padrões de Projetos na Prática com Java*** da **Digital Innovation One (DIO)**, este projeto substitui exemplos artificiais por um cenário crítico do mundo real: **o fechamento de pedidos (Checkout) em um E-commerce**.
+<img src="./docs/portal-hero.png" alt="Portal Unificado integrando o CheckoutService" width="100%" />
 
-### O Problema Arquitetural Comum (Anti-Pattern)
-Em sistemas legados ou sem arquitetura definida, o serviço de checkout rapidamente se torna uma *God Class* repleta de problemas:
-1. **Controllers acoplados** a múltiplos serviços (`EstoqueService`, `PagamentoService`, `CupomService`, `FreteService`, `PedidoRepository`).
-2. **Cadeias gigantes de `if/else` ou `switch`** para calcular o frete de cada transportadora (`SEDEX`, `PAC`, `MOTOBOY`...).
-3. **Validações monolíticas** misturadas ao cálculo financeiro, onde adicionar uma nova regra exige editar e retestar uma classe inteira, violando o *Single Responsibility Principle (SRP)* e o *Open/Closed Principle (OCP)*.
+</div>
+
+> Este microsserviço integra o ecossistema do **Bootcamp Java & IA (Itaú + DIO)**, consumido server-side pelo portal BFF **[ItauBootcamp](https://github.com/GabrielVSL/ItauBootcamp)** em conjunto com o **[Finance-AI-Service](https://github.com/GabrielVSL/Finance-AI-Service)**.
 
 ---
 
-## Arquitetura da Solução e Fluxo de Execução
+## Arquitetura e Fluxo dos Design Patterns
 
-O diagrama abaixo ilustra como os padrões **Facade**, **Chain of Responsibility**, **Strategy** e **Singleton** colaboram para desacoplar completamente o fluxo de checkout:
+<p align="center">
+  <img src="./docs/architecture.svg" alt="Diagrama de Arquitetura do CheckoutService — Facade, Chain of Responsibility, Strategy e Singleton" width="100%" />
+</p>
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Cliente
-    participant Controller as CheckoutController
-    participant Facade as CheckoutFacade (Facade)
-    participant Chain as ValidacaoPedidoHandler (Chain)
-    participant Strategy as Map<String, FreteStrategy> (Strategy)
-    participant Repo as PedidoRepository (JPA / H2)
+### Por que escolhi esta arquitetura?
 
-    Cliente->>Controller: POST /api/v1/checkout (CheckoutRequest)
-    Controller->>Facade: processarCheckout(request)
-    Facade->>Chain: validar(request)
-    Note over Chain: 1. ValidacaoEstoqueHandler (@Order 1)<br/>2. ValidacaoPagamentoHandler (@Order 2)<br/>3. ValidacaoCupomHandler (@Order 3)
-    Chain-->>Facade: Validações aprovadas (ou lança 422)
-    Facade->>Strategy: get(modalidadeFrete).calcularFrete(peso, valorItens)
-    Strategy-->>Facade: Valor do frete calculado (SEDEX / PAC)
-    Facade->>Repo: save(Pedido)
-    Repo-->>Facade: Pedido persistido com ID
-    Facade-->>Controller: PedidoResponse
-    Controller-->>Cliente: 201 Created (PedidoResponse JSON)
-```
+Em sistemas de e-commerce sem fronteiras claras, o serviço de checkout rapidamente vira uma *God Class* repleta de `if/else` para transportadoras, regras de estoque misturadas ao controller e código difícil de testar ou estender. Este serviço resolve o problema aplicando **4 padrões GoF** apoiados diretamente pelo container IoC do Spring:
+
+| Padrão GoF | Implementação no Projeto | Por que foi feito assim? |
+| :--- | :--- | :--- |
+| **Facade** | [`CheckoutFacade`](src/main/java/br/com/devlopes/checkout/facade/CheckoutFacade.java) | O [`CheckoutController`](src/main/java/br/com/devlopes/checkout/controller/CheckoutController.java) depende exclusivamente da Facade (SRP). Ele desconhece elos de validação, estratégias de frete, cupons ou JPA — apenas valida o DTO HTTP e delega. |
+| **Chain of Responsibility** | [`ValidacaoPedidoHandler`](src/main/java/br/com/devlopes/checkout/chain/ValidacaoPedidoHandler.java) + 3 elos com `@Order` | Em vez de mutar ponteiros `setNext(...)` em beans Singleton (o que quebraria thread-safety sob concorrência), a interface é `@FunctionalInterface` e a cadeia é composta funcionalmente no construtor via `reduce(ValidacaoPedidoHandler::encadear)` usando `@Order(1..3)`. Comportamento **fail-fast** (`422 Unprocessable Entity`). |
+| **Strategy** | [`FreteStrategy`](src/main/java/br/com/devlopes/checkout/strategy/FreteStrategy.java), [`FreteSedex`](src/main/java/br/com/devlopes/checkout/strategy/FreteSedex.java), [`FretePac`](src/main/java/br/com/devlopes/checkout/strategy/FretePac.java) | O Spring injeta todos os beans em `Map<String, FreteStrategy>` indexados pelo nome do bean (`"SEDEX"`, `"PAC"`). A resolução ocorre em **O(1)** sem nenhum `if/else` ou `switch`. Adicionar uma nova transportadora exige apenas criar uma nova classe `@Component("JADLOG")` (princípio **Open/Closed**). |
+| **Singleton (IoC)** | Beans `@Service`, `@Component`, `@Repository` | Todas as instâncias de negócio são **stateless** (zero estado mutável compartilhado), tornando o escopo Singleton do Spring 100% seguro em ambientes multi-thread. |
 
 ---
 
-## Como os Design Patterns (GoF) Resolveram o Acoplamento
+## Desafios Reais Encontrados e Soluções de Engenharia
 
-### 1. Strategy (`br.com.devlopes.checkout.strategy`)
-* **Onde foi aplicado:** Interface [`FreteStrategy`](src/main/java/br/com/devlopes/checkout/strategy/FreteStrategy.java) e implementações [`FreteSedex`](src/main/java/br/com/devlopes/checkout/strategy/FreteSedex.java) (`@Component("SEDEX")`) e [`FretePac`](src/main/java/br/com/devlopes/checkout/strategy/FretePac.java) (`@Component("PAC")`).
-* **Como resolveu o acoplamento:**
-  * Aproveita o container IoC do Spring para injetar automaticamente todas as implementações em um `Map<String, FreteStrategy>`, onde a chave é o identificador do bean (`"SEDEX"`, `"PAC"`).
-  * A resolução ocorre em $O(1)$ via `freteStrategies.get(chave)` — **sem nenhum `if/else` ou `switch`**.
-  * **Extensibilidade (OCP):** Para suportar uma nova transportadora (ex.: `FreteJadlog`), basta criar uma nova classe anotada com `@Component("JADLOG")` implementando `FreteStrategy`. Nenhuma linha da `CheckoutFacade` precisa ser alterada.
+Durante a auditoria de qualidade e preparação para deploy público (Render + Neon PostgreSQL), vários pontos sutis foram identificados e corrigidos:
 
-### 2. Chain of Responsibility (`br.com.devlopes.checkout.chain`)
-* **Onde foi aplicado:** Interface funcional [`ValidacaoPedidoHandler`](src/main/java/br/com/devlopes/checkout/chain/ValidacaoPedidoHandler.java) e os elos independentes:
-  1. [`ValidacaoEstoqueHandler`](src/main/java/br/com/devlopes/checkout/chain/ValidacaoEstoqueHandler.java) (`@Order(1)`) — verifica disponibilidade em estoque.
-  2. [`ValidacaoPagamentoHandler`](src/main/java/br/com/devlopes/checkout/chain/ValidacaoPagamentoHandler.java) (`@Order(2)`) — valida meio de pagamento e teto de R$ 5.000,00 para boleto.
-  3. [`ValidacaoCupomHandler`](src/main/java/br/com/devlopes/checkout/chain/ValidacaoCupomHandler.java) (`@Order(3)`) — valida vigência do cupom e valor mínimo do carrinho.
-* **Como resolveu o acoplamento:**
-  * Utiliza composição funcional do Java 21 (`validacoes.stream().reduce(ValidacaoPedidoHandler::encadear)`) combinada à anotação `@Order` do Spring para montar o pipeline de validação de forma **100% stateless e thread-safe**.
-  * Adota comportamento *fail-fast*: se o estoque falhar no Elo 1, a execução é interrompida imediatamente com `ValidacaoCheckoutException` (traduzida para `422 Unprocessable Entity`), poupando processamento desnecessário.
+1. **Burla de estoque por itens duplicados no mesmo carrinho**
+   - **Problema:** Validar cada linha do carrinho isoladamente permitia enviar o mesmo `PROD-LIMITADO` (estoque = 3) em duas linhas com `quantidade: 2` cada (total 4), passando pela regra.
+   - **Solução:** [`ValidacaoEstoqueHandler`](src/main/java/br/com/devlopes/checkout/chain/ValidacaoEstoqueHandler.java) agora agrega todas as quantidades por `produtoId` normalizado (`Map.merge(..., Math::addExact)`) antes de verificar o saldo disponível.
 
-### 3. Facade (`br.com.devlopes.checkout.facade`)
-* **Onde foi aplicado:** Classe [`CheckoutFacade`](src/main/java/br/com/devlopes/checkout/facade/CheckoutFacade.java) (`@Service`).
-* **Como resolveu o acoplamento:**
-  * Fornece uma interface única de alto nível para o [`CheckoutController`](src/main/java/br/com/devlopes/checkout/controller/CheckoutController.java).
-  * O Controller desconhece completamente a existência de validadores, cálculos de frete, regras de cupom ou entidades JPA — ele apenas recebe o DTO HTTP, delega para a Facade e devolve `ResponseEntity<PedidoResponse>`.
+2. **Divergência contábil de arredondamento (`BigDecimal`)**
+   - **Problema:** `ItemCheckoutRequest.calcularSubtotal()` multiplicava antes de arredondar o preço unitário, enquanto a entidade `ItemPedido` arredondava `precoUnitario` antes de multiplicar — podendo gerar `valorItens` diferente da soma dos subtotais persistidos (ex.: `10.004 × 3`).
+   - **Solução:** Escala padronizada (`setScale(2, RoundingMode.HALF_UP)`) antes da multiplicação em [`ItemCheckoutRequest`](src/main/java/br/com/devlopes/checkout/dto/ItemCheckoutRequest.java), garantida por teste unitário dedicado.
 
-### 4. Singleton (Gerenciado pelo Spring IoC)
-* **Onde foi aplicado:** Nos componentes `@Service`, `@Component` e `@Repository` da aplicação.
-* **Como foi aplicado com segurança:**
-  * Todos os beans possuem escopo `singleton` padrão do Spring e foram desenhados **sem estado mutável (stateless)**, garantindo segurança em ambientes concorrentes (multi-thread) e baixo consumo de memória.
+3. **Eliminação de N+1 Queries e Paginação em Memória do Hibernate**
+   - **Problema:** `findAll()` disparava 1 query para pedidos + N queries lazy para `itens`, e combinar `Pageable` diretamente com `@EntityGraph` em coleção `@OneToMany` fazia o Hibernate paginar em memória (`HHH90003004`).
+   - **Solução:** Consulta em 2 etapas no [`PedidoRepository`](src/main/java/br/com/devlopes/checkout/repository/PedidoRepository.java): primeiro busca apenas os IDs mais recentes da sessão com `LIMIT` real em SQL (`findRecentIdsBySessionId`), e depois carrega os pedidos com seus itens em um único `JOIN` via `@EntityGraph`.
+
+4. **Proteção de PII, Anti-IDOR e Blindagem para Produção**
+   - **Isolamento por sessão (`X-Session-Id`):** [`SessionContextFilter`](src/main/java/br/com/devlopes/checkout/config/SessionContextFilter.java) isola listagem e busca por ID (`findWithItensByIdAndSessionId`), impedindo que um visitante acesse pedidos ou e-mails de outro adivinhando IDs sequenciais.
+   - **Autenticação interna & Rate Limit ([`ApiSecurityFilter`](src/main/java/br/com/devlopes/checkout/config/ApiSecurityFilter.java)):** validação de `X-Internal-Api-Key` em tempo constante (`MessageDigest.isEqual`), limite de corpo JSON (`64 KB`), rate limiting por IP, headers defensivos (`nosniff`, `DENY`, `no-store`) e endpoint leve `GET /health` fora do banco.
+   - **Secure-by-default:** Console H2 (`H2_CONSOLE_ENABLED=false`, prevenindo RCE), Swagger (`SWAGGER_ENABLED=false`), `show-sql=false` e stack traces desabilitados por padrão.
+   - **Gestão de memória em plano gratuito (512 MB RAM):** [`PedidoCleanupScheduler`](src/main/java/br/com/devlopes/checkout/facade/PedidoCleanupScheduler.java) remove pedidos expirados (`24h`), há teto de armazenamento (`MAX_STORED_ORDERS`) e o [`Dockerfile`](Dockerfile) multi-stage roda com usuário não-root e JVM ajustada (`-XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC`).
 
 ---
 
-## Princípios SOLID Aplicados
+## Endpoints e Regras de Negócio
 
-| Princípio | Aplicação Prática no Projeto |
-| :--- | :--- |
-| **S — Single Responsibility** | Cada handler valida apenas uma regra; cada strategy calcula apenas uma modalidade de frete; o Controller trata apenas HTTP; o `@RestControllerAdvice` centraliza o tratamento de erros. |
-| **O — Open/Closed** | Novas modalidades de frete (`FreteStrategy`) ou novas regras no pipeline (`ValidacaoPedidoHandler`) são adicionadas criando novas classes `@Component`, sem modificar a `CheckoutFacade`. |
-| **L — Liskov Substitution** | Qualquer implementação de `FreteStrategy` ou `ValidacaoPedidoHandler` pode substituir outra transparentemente respeitando o contrato da interface. |
-| **I — Interface Segregation** | Interfaces enxutas e coesas (`FreteStrategy` com 2 métodos; `ValidacaoPedidoHandler` como `@FunctionalInterface`). |
-| **D — Dependency Inversion** | `CheckoutFacade` depende exclusivamente das abstrações `FreteStrategy`, `ValidacaoPedidoHandler` e `PedidoRepository`, recebidas via injeção por construtor. |
+| Método | Rota | Descrição |
+| :---: | :--- | :--- |
+| `GET` | `/health` | Health check leve (não consulta banco, liberado para monitoramento) |
+| `POST` | `/api/v1/checkout` | Executa Chain -> Strategy -> Persistência e retorna `201 Created` |
+| `GET` | `/api/v1/checkout/pedidos` | Lista os pedidos recentes da sessão atual (`X-Session-Id`) |
+| `GET` | `/api/v1/checkout/pedidos/{id}` | Busca pedido por ID pertencente à sessão atual (`404` se de outra sessão) |
 
----
+### Matriz de Regras e Cenários `422 Unprocessable Entity`
 
-## Estrutura de Pacotes
-
-```text
-br.com.devlopes.checkout
-├── controller
-│   ├── CheckoutController.java          # Camada REST (depende apenas da CheckoutFacade)
-│   └── GlobalExceptionHandler.java      # Tratamento global de erros HTTP (400, 404, 422, 500)
-├── facade
-│   └── CheckoutFacade.java              # Padrão Facade: orquestra Chain, Strategy e Persistência
-├── strategy
-│   ├── FreteStrategy.java               # Contrato Strategy para cálculo de frete
-│   ├── FreteSedex.java                  # @Component("SEDEX")
-│   └── FretePac.java                    # @Component("PAC") com regra de frete grátis >= R$ 500
-├── chain
-│   ├── ValidacaoPedidoHandler.java      # @FunctionalInterface com composição encadear()
-│   ├── ValidacaoEstoqueHandler.java     # Elo 1 (@Order 1): disponibilidade de estoque
-│   ├── ValidacaoPagamentoHandler.java   # Elo 2 (@Order 2): meio de pagamento e limite de boleto
-│   ├── ValidacaoCupomHandler.java       # Elo 3 (@Order 3): validade e valor mínimo de cupom
-│   └── ValidacaoCheckoutException.java  # Exceção de negócio mapeada para HTTP 422
-├── model
-│   ├── Pedido.java                      # Entidade JPA (tabela pedidos)
-│   ├── ItemPedido.java                  # Entidade JPA (tabela itens_pedido)
-│   ├── StatusPedido.java                # Enum: CONFIRMADO, CANCELADO
-│   └── CupomDesconto.java               # Enum com regras dos cupons DEV10 e BEMVINDO20
-├── dto
-│   ├── CheckoutRequest.java             # Java 21 Record + Bean Validation
-│   ├── ItemCheckoutRequest.java         # Java 21 Record + Bean Validation
-│   ├── PedidoResponse.java              # Java 21 Record de saída
-│   ├── ItemPedidoResponse.java          # Java 21 Record de saída de item
-│   └── ApiErrorResponse.java            # Java 21 Record padronizado para erros REST
-├── repository
-│   └── PedidoRepository.java            # Spring Data JPA Repository
-└── CheckoutApplication.java             # Bootstrap Spring Boot + metadados OpenAPI
-```
+| Regra | Condição | Resultado |
+| :--- | :--- | :--- |
+| **Frete SEDEX** | `modalidadeFrete = "SEDEX"` | Taxa fixa `R$ 24,90` + `R$ 4,50/kg` |
+| **Frete PAC** | `modalidadeFrete = "PAC"` | `R$ 12,90` + `R$ 2,10/kg` (**Grátis** se itens >= `R$ 500,00`) |
+| **Frete inválido** | Qualquer modalidade não registrada no Strategy Map | `422` — Modalidade não suportada |
+| **Estoque (Elo 1)** | `PROD-SEM-ESTOQUE` (0 un.) ou `PROD-LIMITADO` (> 3 un. somadas) | `422` — Estoque insuficiente |
+| **Pagamento (Elo 2)** | Forma fora de `PIX`, `CARTAO_CREDITO`, `BOLETO`, ou boleto > `R$ 5.000,00` | `422` — Pagamento não permitido |
+| **Cupom (Elo 3)** | `DEV10` (10% off) ou `BEMVINDO20` (20% off, mín. `R$ 100,00`) | `422` — Cupom inválido ou abaixo do mínimo |
 
 ---
 
-## Como Executar e Testar Localmente
+## Como Executar Localmente e em Produção
 
-### Pré-requisitos
-- **Java 21** (`java -version`)
-- **Maven 3.9+** (`mvn -version`)
-
-### 1. Executar a Suíte de Testes Automatizados (Unitários + Integração)
+### Localmente (H2 em memória — zero configuração)
 ```bash
+git clone https://github.com/GabrielVSL/CheckoutService.git
+cd CheckoutService
+
+# Executar os 21 testes (unitários, integração, segurança e anti-IDOR)
 mvn test
-```
 
-### 2. Iniciar a Aplicação
-```bash
+# Subir a API na porta padrão 8081
 mvn spring-boot:run
 ```
 
-### 3. Endpoints e Ferramentas de Desenvolvimento
-- **Health Check:** [http://localhost:8081/health](http://localhost:8081/health)
-- **Swagger UI (habilite em dev via `SWAGGER_ENABLED=true`):** [http://localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html)
-- **OpenAPI Spec (JSON):** [http://localhost:8081/v3/api-docs](http://localhost:8081/v3/api-docs)
-- **H2 Database Console (desabilitado por padrão em produção; habilite localmente via `H2_CONSOLE_ENABLED=true`):** [http://localhost:8081/h2-console](http://localhost:8081/h2-console)
-  - **JDBC URL:** `jdbc:h2:mem:checkoutdb`
-  - **User Name:** `sa`
-  - **Password:** *(deixe em branco)*
+> Para inspecionar Swagger ou H2 **apenas localmente**, inicie com `SWAGGER_ENABLED=true` e/ou `H2_CONSOLE_ENABLED=true`.
+
+### Produção (Docker no Render + Neon PostgreSQL)
+O projeto detecta o banco automaticamente: basta configurar as variáveis listadas em [`.env.example`](.env.example) no painel do Render (`Runtime: Docker`, `Health Check Path: /health`):
+- `SPRING_DATASOURCE_URL=jdbc:postgresql://<host-neon>/checkoutdb?sslmode=require`
+- `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`
+- `INTERNAL_API_KEY` *(mesmo valor configurado no BFF)* e `TRUST_PROXY_HEADERS=true`
 
 ---
 
-## Exemplos de Uso da API
+## Testes Automatizados
 
-### `POST /api/v1/checkout` — Requisição de Sucesso (`201 Created`)
-```json
-{
-  "clienteNome": "Fred Lopes",
-  "clienteEmail": "fred@devlopes.com.br",
-  "itens": [
-    {
-      "produtoId": "PROD-001",
-      "nomeProduto": "Teclado Mecânico Keychron K2",
-      "quantidade": 2,
-      "precoUnitario": 349.90
-    }
-  ],
-  "modalidadeFrete": "SEDEX",
-  "formaPagamento": "PIX",
-  "cupomDesconto": "DEV10",
-  "pesoTotalKg": 2.5
-}
-```
-
-### Cenários de Regras de Negócio para Teste no Swagger (`422 Unprocessable Entity`)
-
-| Cenário | Campo no JSON | Valor para Testar | Comportamento Esperado |
-| :--- | :--- | :--- | :--- |
-| **Frete Expresso** | `modalidadeFrete` | `"SEDEX"` | Taxa fixa R$ 24,90 + R$ 4,50/kg |
-| **Frete Econômico / Grátis** | `modalidadeFrete` | `"PAC"` | R$ 12,90 + R$ 2,10/kg (Grátis se itens $\ge$ R$ 500,00) |
-| **Frete Inexistente (Strategy)** | `modalidadeFrete` | `"DRONE"` | `422` — Modalidade não suportada |
-| **Produto sem Estoque (Elo 1)** | `itens[0].produtoId` | `"PROD-SEM-ESTOQUE"` | `422` — Estoque insuficiente (disponível: 0) |
-| **Boleto Acima do Teto (Elo 2)** | `formaPagamento` | `"BOLETO"` (itens > 5000) | `422` — Boleto permitido apenas até R$ 5.000,00 |
-| **Cupom 10% OFF (Elo 3)** | `cupomDesconto` | `"DEV10"` | Aplica 10% de desconto sobre o valor dos itens |
-| **Cupom 20% OFF (Elo 3)** | `cupomDesconto` | `"BEMVINDO20"` | Aplica 20% de desconto (exige mínimo de R$ 100,00 em itens) |
+A suíte conta com **21 testes** (JUnit 5, Mockito e MockMvc) cobrindo:
+- [`CheckoutFacadeTest`](src/test/java/br/com/devlopes/checkout/CheckoutFacadeTest.java): cálculos SEDEX/PAC, frete grátis, falhas fail-fast em cada elo da Chain, bloqueio de burla de estoque duplicado e consistência de arredondamento.
+- [`CheckoutControllerIntegrationTest`](src/test/java/br/com/devlopes/checkout/CheckoutControllerIntegrationTest.java): fluxo HTTP completo (`201`, `400`, `404`, `422`), `/health`, headers de segurança e **isolamento de sessão / anti-IDOR**.
+- [`ApiSecurityFilterTest`](src/test/java/br/com/devlopes/checkout/config/ApiSecurityFilterTest.java): exigência de `X-Internal-Api-Key` em `/api/**`, liberação de `/health` e rate limiting (`429` + `Retry-After`).

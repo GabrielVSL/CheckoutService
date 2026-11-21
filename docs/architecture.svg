@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 580" width="1200" height="580" role="img" aria-label="Arquitetura do CheckoutService — Facade, Chain of Responsibility, Strategy e Singleton em Java 21 e Spring Boot 3">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#120F17" />
+      <stop offset="60%" stop-color="#19131F" />
+      <stop offset="100%" stop-color="#241512" />
+    </linearGradient>
+    <radialGradient id="orangeGlow" cx="82%" cy="18%" r="52%">
+      <stop offset="0%" stop-color="#FF6200" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#FF6200" stop-opacity="0" />
+    </radialGradient>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#FF8A3D" />
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#34D399" />
+    </marker>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="580" rx="24" fill="url(#bgGrad)" />
+  <rect width="1200" height="580" rx="24" fill="url(#orangeGlow)" />
+  <rect x="1" y="1" width="1198" height="578" rx="23" fill="none" stroke="#2D2638" stroke-width="1.5" />
+
+  <!-- Header -->
+  <rect x="36" y="28" width="232" height="28" rx="14" fill="#FF6200" fill-opacity="0.16" stroke="#FF6200" stroke-opacity="0.45" />
+  <text x="152" y="46" text-anchor="middle" class="sans" font-size="11.5" font-weight="700" fill="#FFA066" letter-spacing="0.6">DESIGN PATTERNS (GoF) &amp; SOLID</text>
+  <text x="36" y="88" class="sans" font-size="25" font-weight="700" fill="#FFFFFF">CheckoutService — Pipeline Desacoplado de Pedidos</text>
+  <text x="36" y="112" class="sans" font-size="13.5" fill="#A8A2B3">Java 21 · Spring Boot 3.4 · Facade · Chain of Responsibility · Strategy O(1) · Singleton IoC · Isolamento por Sessão</text>
+
+  <!-- Step 1: Security & Session Edge -->
+  <g transform="translate(36, 152)">
+    <rect width="210" height="346" rx="16" fill="#1C1726" stroke="#322B40" stroke-width="1.5" />
+    <rect x="16" y="16" width="112" height="22" rx="11" fill="#10B981" fill-opacity="0.18" />
+    <text x="72" y="31" text-anchor="middle" class="sans" font-size="10.5" font-weight="700" fill="#6EE7B7">BORDA HTTP</text>
+
+    <text x="16" y="64" class="sans" font-size="15.5" font-weight="700" fill="#FFFFFF">Filtros &amp; Controller</text>
+    <text x="16" y="84" class="mono" font-size="10.5" fill="#FFA066">POST /api/v1/checkout</text>
+
+    <g transform="translate(16, 102)">
+      <rect width="178" height="72" rx="10" fill="#251F31" stroke="#372F46" />
+      <text x="12" y="20" class="sans" font-size="11.5" font-weight="700" fill="#FFFFFF">ApiSecurityFilter</text>
+      <text x="12" y="37" class="sans" font-size="10" fill="#B8B2C4">X-Internal-Api-Key (const-time)</text>
+      <text x="12" y="52" class="sans" font-size="10" fill="#B8B2C4">Rate Limit · JSON &lt;= 64KB</text>
+      <text x="12" y="65" class="sans" font-size="10" fill="#6EE7B7">Headers nosniff · DENY</text>
+    </g>
+
+    <g transform="translate(16, 186)">
+      <rect width="178" height="58" rx="10" fill="#251F31" stroke="#372F46" />
+      <text x="12" y="20" class="sans" font-size="11.5" font-weight="700" fill="#FFFFFF">SessionContextFilter</text>
+      <text x="12" y="37" class="mono" font-size="10" fill="#FFA066">X-Session-Id (ThreadLocal)</text>
+      <text x="12" y="51" class="sans" font-size="10" fill="#B8B2C4">Bloqueia IDOR entre usuários</text>
+    </g>
+
+    <g transform="translate(16, 256)">
+      <rect width="178" height="72" rx="10" fill="#251F31" stroke="#372F46" />
+      <text x="12" y="20" class="sans" font-size="11.5" font-weight="700" fill="#FFFFFF">CheckoutController</text>
+      <text x="12" y="37" class="sans" font-size="10" fill="#B8B2C4">Bean Validation (@Valid)</text>
+      <text x="12" y="51" class="sans" font-size="10" fill="#B8B2C4">SRP: depende só da Facade</text>
+      <text x="12" y="65" class="mono" font-size="10" fill="#93C5FD">GET /health (keep-alive)</text>
+    </g>
+  </g>
+
+  <line x1="246" y1="325" x2="284" y2="325" stroke="#FF8A3D" stroke-width="2" marker-end="url(#arrowOrange)" />
+
+  <!-- Step 2: Facade Orchestrator -->
+  <g transform="translate(292, 152)">
+    <rect width="206" height="346" rx="16" fill="#1C1726" stroke="#FF6200" stroke-opacity="0.6" stroke-width="1.8" />
+    <rect x="16" y="16" width="136" height="22" rx="11" fill="#FF6200" />
+    <text x="84" y="31" text-anchor="middle" class="sans" font-size="10.5" font-weight="700" fill="#FFFFFF">FACADE · SINGLETON</text>
+
+    <text x="16" y="64" class="sans" font-size="16" font-weight="700" fill="#FFFFFF">CheckoutFacade</text>
+    <text x="16" y="83" class="sans" font-size="11" fill="#A8A2B3">Orquestrador @Transactional</text>
+
+    <line x1="16" y1="98" x2="190" y2="98" stroke="#2D2638" />
+
+    <text x="16" y="124" class="sans" font-size="11.5" font-weight="700" fill="#FFA066">1. Executa Chain</text>
+    <text x="16" y="141" class="sans" font-size="10.5" fill="#C9C3D4">Composição funcional sem</text>
+    <text x="16" y="155" class="sans" font-size="10.5" fill="#C9C3D4">estado mutável (stateless)</text>
+
+    <text x="16" y="186" class="sans" font-size="11.5" font-weight="700" fill="#FFA066">2. Resolve Strategy</text>
+    <text x="16" y="203" class="mono" font-size="10" fill="#FFFFFF">Map&lt;String, FreteStrategy&gt;</text>
+    <text x="16" y="218" class="sans" font-size="10.5" fill="#C9C3D4">Lookup O(1) · Zero if/else</text>
+
+    <text x="16" y="249" class="sans" font-size="11.5" font-weight="700" fill="#FFA066">3. Consolida Totais</text>
+    <text x="16" y="266" class="sans" font-size="10.5" fill="#C9C3D4">BigDecimal scale 2 HALF_UP</text>
+    <text x="16" y="280" class="sans" font-size="10.5" fill="#C9C3D4">Desconto + Frete + Subtotal</text>
+
+    <text x="16" y="311" class="sans" font-size="11.5" font-weight="700" fill="#6EE7B7">4. Persiste &amp; Retorna</text>
+    <text x="16" y="328" class="sans" font-size="10.5" fill="#C9C3D4">201 Created (PedidoResponse)</text>
+  </g>
+
+  <!-- Arrows from Facade to Chain & Strategy -->
+  <path d="M 498 242 L 538 242" fill="none" stroke="#FF8A3D" stroke-width="2" marker-end="url(#arrowOrange)" />
+  <path d="M 498 424 L 538 424" fill="none" stroke="#FF8A3D" stroke-width="2" marker-end="url(#arrowOrange)" />
+
+  <!-- Step 3 Top: Chain of Responsibility -->
+  <g transform="translate(546, 152)">
+    <rect width="382" height="186" rx="16" fill="#1C1726" stroke="#322B40" stroke-width="1.5" />
+    <rect x="16" y="14" width="212" height="22" rx="11" fill="#F43F5E" fill-opacity="0.18" />
+    <text x="122" y="29" text-anchor="middle" class="sans" font-size="10.5" font-weight="700" fill="#FDA4AF">CHAIN OF RESPONSIBILITY (FAIL-FAST 422)</text>
+
+    <g transform="translate(16, 48)">
+      <rect width="108" height="120" rx="12" fill="#251F31" stroke="#3D344E" />
+      <text x="10" y="22" class="mono" font-size="10" font-weight="700" fill="#FFA066">@Order(1)</text>
+      <text x="10" y="42" class="sans" font-size="12.5" font-weight="700" fill="#FFFFFF">Estoque</text>
+      <text x="10" y="62" class="sans" font-size="10" fill="#B8B2C4">Soma itens</text>
+      <text x="10" y="76" class="sans" font-size="10" fill="#B8B2C4">repetidos p/</text>
+      <text x="10" y="90" class="sans" font-size="10" fill="#B8B2C4">evitar burla</text>
+      <text x="10" y="108" class="mono" font-size="9.5" fill="#FDA4AF">HTTP 422</text>
+    </g>
+
+    <line x1="124" y1="108" x2="137" y2="108" stroke="#FF8A3D" stroke-width="1.8" marker-end="url(#arrowOrange)" />
+
+    <g transform="translate(141, 48)">
+      <rect width="108" height="120" rx="12" fill="#251F31" stroke="#3D344E" />
+      <text x="10" y="22" class="mono" font-size="10" font-weight="700" fill="#FFA066">@Order(2)</text>
+      <text x="10" y="42" class="sans" font-size="12.5" font-weight="700" fill="#FFFFFF">Pagamento</text>
+      <text x="10" y="62" class="sans" font-size="10" fill="#B8B2C4">PIX, Cartão</text>
+      <text x="10" y="76" class="sans" font-size="10" fill="#B8B2C4">ou Boleto</text>
+      <text x="10" y="90" class="sans" font-size="10" fill="#B8B2C4">(teto R$ 5k)</text>
+      <text x="10" y="108" class="mono" font-size="9.5" fill="#FDA4AF">HTTP 422</text>
+    </g>
+
+    <line x1="249" y1="108" x2="262" y2="108" stroke="#FF8A3D" stroke-width="1.8" marker-end="url(#arrowOrange)" />
+
+    <g transform="translate(266, 48)">
+      <rect width="100" height="120" rx="12" fill="#251F31" stroke="#3D344E" />
+      <text x="10" y="22" class="mono" font-size="10" font-weight="700" fill="#FFA066">@Order(3)</text>
+      <text x="10" y="42" class="sans" font-size="12.5" font-weight="700" fill="#FFFFFF">Cupom</text>
+      <text x="10" y="62" class="sans" font-size="10" fill="#B8B2C4">DEV10 (10%)</text>
+      <text x="10" y="76" class="sans" font-size="10" fill="#B8B2C4">BEMVINDO20</text>
+      <text x="10" y="90" class="sans" font-size="10" fill="#B8B2C4">(mín R$ 100)</text>
+      <text x="10" y="108" class="mono" font-size="9.5" fill="#FDA4AF">HTTP 422</text>
+    </g>
+  </g>
+
+  <!-- Step 3 Bottom: Strategy Pattern -->
+  <g transform="translate(546, 354)">
+    <rect width="382" height="144" rx="16" fill="#1C1726" stroke="#322B40" stroke-width="1.5" />
+    <rect x="16" y="14" width="194" height="22" rx="11" fill="#38BDF8" fill-opacity="0.18" />
+    <text x="113" y="29" text-anchor="middle" class="sans" font-size="10.5" font-weight="700" fill="#7DD3FC">STRATEGY PATTERN · OPEN/CLOSED</text>
+
+    <g transform="translate(16, 48)">
+      <rect width="168" height="80" rx="12" fill="#251F31" stroke="#3D344E" />
+      <text x="12" y="22" class="mono" font-size="11" font-weight="700" fill="#7DD3FC">@Component("SEDEX")</text>
+      <text x="12" y="42" class="sans" font-size="12.5" font-weight="700" fill="#FFFFFF">FreteSedex</text>
+      <text x="12" y="62" class="sans" font-size="10.5" fill="#B8B2C4">R$ 24,90 + R$ 4,50 / kg</text>
+    </g>
+
+    <g transform="translate(198, 48)">
+      <rect width="168" height="80" rx="12" fill="#251F31" stroke="#3D344E" />
+      <text x="12" y="22" class="mono" font-size="11" font-weight="700" fill="#7DD3FC">@Component("PAC")</text>
+      <text x="12" y="42" class="sans" font-size="12.5" font-weight="700" fill="#FFFFFF">FretePac</text>
+      <text x="12" y="60" class="sans" font-size="10.5" fill="#B8B2C4">R$ 12,90 + R$ 2,10 / kg</text>
+      <text x="12" y="73" class="sans" font-size="10" fill="#6EE7B7">Grátis se itens &gt;= R$ 500</text>
+    </g>
+  </g>
+
+  <!-- Arrow to Persistence -->
+  <line x1="928" y1="325" x2="966" y2="325" stroke="#34D399" stroke-width="2" marker-end="url(#arrowEmerald)" />
+
+  <!-- Step 4: Persistence & Optimization -->
+  <g transform="translate(974, 152)">
+    <rect width="190" height="346" rx="16" fill="#14231F" stroke="#10B981" stroke-opacity="0.45" stroke-width="1.5" />
+    <text x="16" y="30" class="sans" font-size="10.5" font-weight="700" fill="#34D399" letter-spacing="0.5">PERSISTÊNCIA JPA</text>
+    <text x="16" y="56" class="sans" font-size="16" font-weight="700" fill="#FFFFFF">PedidoRepository</text>
+
+    <g transform="translate(14, 76)">
+      <rect width="162" height="72" rx="10" fill="#1B302A" />
+      <text x="10" y="20" class="sans" font-size="11" font-weight="700" fill="#6EE7B7">Zero N+1 Queries</text>
+      <text x="10" y="37" class="sans" font-size="10" fill="#D1FAE5">Paginação SQL por ID</text>
+      <text x="10" y="51" class="sans" font-size="10" fill="#D1FAE5">+ @EntityGraph(itens)</text>
+      <text x="10" y="65" class="sans" font-size="10" fill="#A7F3D0">Filtrado por session_id</text>
+    </g>
+
+    <g transform="translate(14, 162)">
+      <rect width="162" height="76" rx="10" fill="#1B302A" />
+      <text x="10" y="20" class="sans" font-size="11" font-weight="700" fill="#6EE7B7">Banco Híbrido</text>
+      <text x="10" y="39" class="mono" font-size="10.5" fill="#FFFFFF">Neon PostgreSQL</text>
+      <text x="10" y="54" class="sans" font-size="10" fill="#D1FAE5">Prod: checkoutdb (SSL)</text>
+      <text x="10" y="68" class="sans" font-size="10" fill="#A7F3D0">Local/Test: H2 memória</text>
+    </g>
+
+    <g transform="translate(14, 252)">
+      <rect width="162" height="76" rx="10" fill="#1B302A" />
+      <text x="10" y="20" class="sans" font-size="11" font-weight="700" fill="#6EE7B7">Proteção de Recursos</text>
+      <text x="10" y="38" class="sans" font-size="10" fill="#D1FAE5">Teto de 2.000 pedidos</text>
+      <text x="10" y="52" class="sans" font-size="10" fill="#D1FAE5">Retenção automática 24h</text>
+      <text x="10" y="66" class="mono" font-size="9.5" fill="#A7F3D0">@Scheduled cleanup</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <rect x="36" y="520" width="1128" height="36" rx="10" fill="#1C1726" stroke="#2D2638" />
+  <text x="600" y="543" text-anchor="middle" class="sans" font-size="11.5" fill="#B8B2C4">
+    Extensibilidade OCP: adicionar uma nova transportadora ou regra de negócio exige apenas 1 nova classe @Component — zero alterações na CheckoutFacade
+  </text>
+</svg>
