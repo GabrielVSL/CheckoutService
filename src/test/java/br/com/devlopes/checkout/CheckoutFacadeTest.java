@@ -254,4 +254,48 @@ class CheckoutFacadeTest {
 
         verify(pedidoRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("Deve impedir burla de estoque quando o mesmo produto é enviado em múltiplos itens")
+    void deveFalharQuandoItensDuplicadosExcederemEstoque() {
+        CheckoutRequest request = new CheckoutRequest(
+                "Fred Lopes",
+                "fred@devlopes.com.br",
+                List.of(
+                        new ItemCheckoutRequest("PROD-LIMITADO", "Kit Dev", 2, new BigDecimal("229.90")),
+                        new ItemCheckoutRequest("prod-limitado", "Kit Dev", 2, new BigDecimal("229.90"))
+                ),
+                "SEDEX",
+                "PIX",
+                null,
+                new BigDecimal("2.4")
+        );
+
+        assertThatThrownBy(() -> checkoutFacade.processarCheckout(request))
+                .isInstanceOf(ValidacaoCheckoutException.class)
+                .hasMessageContaining("Solicitado: 4, disponível: 3.");
+
+        verify(pedidoRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve manter consistência exata de arredondamento entre valorItens e soma dos subtotais")
+    void deveManterConsistenciaDeArredondamentoNosItens() {
+        when(pedidoRepository.save(any(Pedido.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = new CheckoutRequest(
+                "Fred Lopes",
+                "fred@devlopes.com.br",
+                List.of(new ItemCheckoutRequest("PROD-001", "Item Fracionado", 3, new BigDecimal("10.004"))),
+                "PAC",
+                "PIX",
+                null,
+                new BigDecimal("1.0")
+        );
+
+        PedidoResponse response = checkoutFacade.processarCheckout(request);
+
+        assertThat(response.valorItens()).isEqualByComparingTo("30.00");
+        assertThat(response.itens().getFirst().subtotal()).isEqualByComparingTo("30.00");
+    }
 }

@@ -2,6 +2,7 @@ package br.com.devlopes.checkout.facade;
 
 import br.com.devlopes.checkout.chain.ValidacaoCheckoutException;
 import br.com.devlopes.checkout.chain.ValidacaoPedidoHandler;
+import br.com.devlopes.checkout.config.SessionContext;
 import br.com.devlopes.checkout.dto.CheckoutRequest;
 import br.com.devlopes.checkout.dto.ItemCheckoutRequest;
 import br.com.devlopes.checkout.dto.PedidoResponse;
@@ -11,6 +12,9 @@ import br.com.devlopes.checkout.model.Pedido;
 import br.com.devlopes.checkout.model.StatusPedido;
 import br.com.devlopes.checkout.repository.PedidoRepository;
 import br.com.devlopes.checkout.strategy.FreteStrategy;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,9 +48,14 @@ import java.util.Optional;
 @Service
 public class CheckoutFacade {
 
+    private static final long DEFAULT_MAX_STORED_ORDERS = 2000L;
+    private static final int DEFAULT_MAX_LIST_RESULTS = 100;
+
     private final ValidacaoPedidoHandler cadeiaValidacao;
     private final Map<String, FreteStrategy> freteStrategies;
     private final PedidoRepository pedidoRepository;
+    private final long maxStoredOrders;
+    private final int maxListResults;
 
     /**
      * O Spring injeta automaticamente:
@@ -57,10 +66,13 @@ public class CheckoutFacade {
      *       e o valor é a respectiva instância Singleton de {@link FreteStrategy}.</li>
      * </ul>
      */
+    @Autowired
     public CheckoutFacade(
             List<ValidacaoPedidoHandler> validacoes,
             Map<String, FreteStrategy> freteStrategies,
-            PedidoRepository pedidoRepository
+            PedidoRepository pedidoRepository,
+            @Value("${app.orders.max-stored-orders:2000}") long maxStoredOrders,
+            @Value("${app.orders.max-list-results:100}") int maxListResults
     ) {
         if (validacoes == null || validacoes.isEmpty()) {
             throw new IllegalStateException("Nenhum handler de validação foi registrado no container Spring.");
@@ -70,6 +82,16 @@ public class CheckoutFacade {
                 .orElseThrow();
         this.freteStrategies = freteStrategies;
         this.pedidoRepository = pedidoRepository;
+        this.maxStoredOrders = Math.max(1L, maxStoredOrders);
+        this.maxListResults = Math.max(1, maxListResults);
+    }
+
+    public CheckoutFacade(
+            List<ValidacaoPedidoHandler> validacoes,
+            Map<String, FreteStrategy> freteStrategies,
+            PedidoRepository pedidoRepository
+    ) {
+        this(validacoes, freteStrategies, pedidoRepository, DEFAULT_MAX_STORED_ORDERS, DEFAULT_MAX_LIST_RESULTS);
     }
 
     /**
@@ -83,7 +105,14 @@ public class CheckoutFacade {
         // 2. Resolve a estratégia de frete dinamicamente sem if/else ou switch (Strategy)
         FreteStrategy freteStrategy = resolverEstrategiaFrete(request.modalidadeFrete());
 
-        // 3. Realiza os cálculos financeiros do pedido
+        // 3. Verifica capacidade em memória do H2 antes de persistir
+        if (pedidoRepository.count() >= maxStoredOrders) {
+            throw new ValidacaoCheckoutException(
+                    "Capacidade temporária de armazenamento de pedidos atingida. Tente novamente mais tarde."
+            );
+        }
+
+        // 4. Realiza os cálculos financeiros do pedido
         BigDecimal valorItens = request.calcularValorTotalItens().setScale(2, RoundingMode.HALF_UP);
         BigDecimal valorFrete = freteStrategy.calcularFrete(request.pesoTotalKg(), valorItens);
         Optional<CupomDesconto> cupomAplicado = CupomDesconto.buscarPorCodigo(request.cupomDesconto());
@@ -97,7 +126,7 @@ public class CheckoutFacade {
                 .max(BigDecimal.ZERO)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // 4. Constrói e persiste o pedido com seus itens
+        // 5. Constrói e persiste o pedido com seus itens
         Pedido pedido = construirPedido(
                 request,
                 freteStrategy.getModalidade(),
@@ -113,21 +142,31 @@ public class CheckoutFacade {
     }
 
     /**
-     * Lista todos os pedidos persistidos.
+     * Lista os pedidos mais recentes da sessão atual usando paginação em SQL (por ID) + EntityGraph,
+     * evitando vazamento de PII entre visitantes, N+1 queries e paginação em memória do Hibernate.
      */
     @Transactional(readOnly = true)
     public List<PedidoResponse> listarPedidos() {
-        return pedidoRepository.findAll().stream()
+        String sessionId = SessionContext.getCurrentSessionId();
+        List<Long> recentIds = pedidoRepository.findRecentIdsBySessionId(
+                sessionId,
+                PageRequest.of(0, maxListResults)
+        );
+        if (recentIds.isEmpty()) {
+            return List.of();
+        }
+        return pedidoRepository.findByIdInOrderByCriadoEmDescIdDesc(recentIds).stream()
                 .map(PedidoResponse::fromEntity)
                 .toList();
     }
 
     /**
-     * Busca um pedido específico pelo seu identificador.
+     * Busca um pedido específico pertencente à sessão atual (previne IDOR entre visitantes).
      */
     @Transactional(readOnly = true)
     public PedidoResponse buscarPedidoPorId(Long id) {
-        Pedido pedido = pedidoRepository.findById(id)
+        String sessionId = SessionContext.getCurrentSessionId();
+        Pedido pedido = pedidoRepository.findWithItensByIdAndSessionId(id, sessionId)
                 .orElseThrow(() -> new NoSuchElementException("Pedido não encontrado com ID: " + id));
         return PedidoResponse.fromEntity(pedido);
     }
@@ -135,10 +174,16 @@ public class CheckoutFacade {
     private FreteStrategy resolverEstrategiaFrete(String modalidadeFrete) {
         String chave = modalidadeFrete.trim().toUpperCase(Locale.ROOT);
         return Optional.ofNullable(freteStrategies.get(chave))
-                .orElseThrow(() -> new ValidacaoCheckoutException(
-                        "Modalidade de frete não suportada: '" + modalidadeFrete
-                                + "'. Opções disponíveis: " + freteStrategies.keySet().stream().sorted().toList()
-                ));
+                .orElseThrow(() -> {
+                    String safeModalidade = modalidadeFrete.trim().replaceAll("[\\r\\n\\t]", " ");
+                    if (safeModalidade.length() > 32) {
+                        safeModalidade = safeModalidade.substring(0, 32) + "...";
+                    }
+                    return new ValidacaoCheckoutException(
+                            "Modalidade de frete não suportada: '" + safeModalidade
+                                    + "'. Opções disponíveis: " + freteStrategies.keySet().stream().sorted().toList()
+                    );
+                });
     }
 
     private Pedido construirPedido(

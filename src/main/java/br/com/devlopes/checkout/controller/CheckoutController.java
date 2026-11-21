@@ -11,8 +11,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +32,7 @@ import java.util.List;
  * orquestração de regras de negócio, validações, cálculo de frete e persistência.</p>
  */
 @RestController
+@Validated
 @RequestMapping("/api/v1/checkout")
 @Tag(name = "Checkout", description = "Endpoints para fechamento e consulta de pedidos de e-commerce")
 public class CheckoutController {
@@ -79,7 +82,9 @@ public class CheckoutController {
             @ApiResponse(responseCode = "404", description = "Pedido não encontrado",
                     content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
-    public ResponseEntity<PedidoResponse> buscarPorId(@PathVariable Long id) {
+    public ResponseEntity<PedidoResponse> buscarPorId(
+            @PathVariable @Positive(message = "O ID do pedido deve ser positivo") Long id
+    ) {
         return ResponseEntity.ok(checkoutFacade.buscarPedidoPorId(id));
     }
 }

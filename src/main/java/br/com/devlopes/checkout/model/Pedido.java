@@ -1,5 +1,6 @@
 package br.com.devlopes.checkout.model;
 
+import br.com.devlopes.checkout.config.SessionContext;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -8,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
@@ -19,28 +21,38 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Entidade principal do domínio de Checkout, persistida no banco H2.
+ * Entidade principal do domínio de Checkout, persistida no banco relacional (H2/PostgreSQL).
  */
 @Entity
-@Table(name = "pedidos")
+@Table(
+        name = "pedidos",
+        indexes = {
+                @Index(name = "idx_pedidos_session_criado", columnList = "session_id, criado_em"),
+                @Index(name = "idx_pedidos_criado_em", columnList = "criado_em")
+        }
+)
 public class Pedido {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "session_id", nullable = false, length = 64)
+    private String sessionId;
+
+    @Column(nullable = false, length = 120)
     private String clienteNome;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 160)
     private String clienteEmail;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 30)
     private String modalidadeFrete;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 30)
     private String formaPagamento;
 
+    @Column(length = 32)
     private String cupomAplicado;
 
     @Column(nullable = false, precision = 12, scale = 2)
@@ -59,7 +71,7 @@ public class Pedido {
     @Column(nullable = false)
     private StatusPedido status;
 
-    @Column(nullable = false)
+    @Column(name = "criado_em", nullable = false)
     private LocalDateTime criadoEm;
 
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -80,6 +92,35 @@ public class Pedido {
             BigDecimal valorTotal,
             StatusPedido status
     ) {
+        this(
+                SessionContext.getCurrentSessionId(),
+                clienteNome,
+                clienteEmail,
+                modalidadeFrete,
+                formaPagamento,
+                cupomAplicado,
+                valorItens,
+                valorFrete,
+                valorDesconto,
+                valorTotal,
+                status
+        );
+    }
+
+    public Pedido(
+            String sessionId,
+            String clienteNome,
+            String clienteEmail,
+            String modalidadeFrete,
+            String formaPagamento,
+            String cupomAplicado,
+            BigDecimal valorItens,
+            BigDecimal valorFrete,
+            BigDecimal valorDesconto,
+            BigDecimal valorTotal,
+            StatusPedido status
+    ) {
+        this.sessionId = SessionContext.sanitize(sessionId);
         this.clienteNome = clienteNome;
         this.clienteEmail = clienteEmail;
         this.modalidadeFrete = modalidadeFrete;
@@ -94,6 +135,9 @@ public class Pedido {
 
     @PrePersist
     void prePersist() {
+        if (this.sessionId == null || this.sessionId.isBlank()) {
+            this.sessionId = SessionContext.DEFAULT_SESSION_ID;
+        }
         if (this.criadoEm == null) {
             this.criadoEm = LocalDateTime.now();
         }
@@ -106,6 +150,10 @@ public class Pedido {
 
     public Long getId() {
         return id;
+    }
+
+    public String getSessionId() {
+        return sessionId;
     }
 
     public String getClienteNome() {

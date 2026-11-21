@@ -28,9 +28,15 @@ public class ValidacaoCupomHandler implements ValidacaoPedidoHandler {
         }
 
         CupomDesconto cupom = CupomDesconto.buscarPorCodigo(codigoInformado)
-                .orElseThrow(() -> new ValidacaoCheckoutException(
-                        "Cupom de desconto inválido ou expirado: '" + codigoInformado + "'."
-                ));
+                .orElseThrow(() -> {
+                    String safeCodigo = codigoInformado.trim().replaceAll("[\\r\\n\\t]", " ");
+                    if (safeCodigo.length() > 32) {
+                        safeCodigo = safeCodigo.substring(0, 32) + "...";
+                    }
+                    return new ValidacaoCheckoutException(
+                            "Cupom de desconto inválido ou expirado: '" + safeCodigo + "'."
+                    );
+                });
 
         BigDecimal valorItens = request.calcularValorTotalItens();
         if (!cupom.atendeValorMinimo(valorItens)) {

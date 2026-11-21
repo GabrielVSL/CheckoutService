@@ -147,10 +147,11 @@ mvn test
 mvn spring-boot:run
 ```
 
-### 3. Acessar Documentação Interativa e Banco de Dados
-- **Swagger UI:** [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
-- **OpenAPI Spec (JSON):** [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
-- **H2 Database Console:** [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+### 3. Endpoints e Ferramentas de Desenvolvimento
+- **Health Check:** [http://localhost:8081/health](http://localhost:8081/health)
+- **Swagger UI (habilite em dev via `SWAGGER_ENABLED=true`):** [http://localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html)
+- **OpenAPI Spec (JSON):** [http://localhost:8081/v3/api-docs](http://localhost:8081/v3/api-docs)
+- **H2 Database Console (desabilitado por padrão em produção; habilite localmente via `H2_CONSOLE_ENABLED=true`):** [http://localhost:8081/h2-console](http://localhost:8081/h2-console)
   - **JDBC URL:** `jdbc:h2:mem:checkoutdb`
   - **User Name:** `sa`
   - **Password:** *(deixe em branco)*

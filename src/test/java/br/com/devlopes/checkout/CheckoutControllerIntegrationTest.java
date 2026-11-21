@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -21,11 +22,13 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestPropertySource(properties = "app.security.rate-limit.enabled=false")
 class CheckoutControllerIntegrationTest {
 
     @Autowired
@@ -172,5 +175,65 @@ class CheckoutControllerIntegrationTest {
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.erro").value("Recurso não encontrado"))
                 .andExpect(jsonPath("$.mensagem").value("Pedido não encontrado com ID: 99999"));
+    }
+
+    @Test
+    @DisplayName("GET /health deve retornar 200 UP com headers de segurança")
+    void deveRetornarHealthUpComHeadersDeSeguranca() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("X-Frame-Options", "DENY"))
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.service").value("checkout-api"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/checkout/pedidos/{id} deve retornar 400 para ID negativo ou zero")
+    void deveRetornar400ParaIdInvalido() throws Exception {
+        mockMvc.perform(get("/api/v1/checkout/pedidos/{id}", -5L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("X-Session-Id deve isolar pedidos e bloquear IDOR entre visitantes diferentes")
+    void deveIsolarPedidosPorSessaoEBloquearIdor() throws Exception {
+        CheckoutRequest requestA = new CheckoutRequest(
+                "Alice Silva",
+                "alice@example.com",
+                List.of(new ItemCheckoutRequest("PROD-010", "Headset Wireless", 1, new BigDecimal("300.00"))),
+                "PAC",
+                "PIX",
+                null,
+                new BigDecimal("1.0")
+        );
+
+        MvcResult postResult = mockMvc.perform(post("/api/v1/checkout")
+                        .header("X-Session-Id", "sessao-alice")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(requestA)))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("X-Session-Id", "sessao-alice"))
+                .andReturn();
+
+        long pedidoId = objectMapper.readTree(postResult.getResponse().getContentAsString())
+                .get("pedidoId").asLong();
+
+        // Sessão Alice vê seu pedido
+        mockMvc.perform(get("/api/v1/checkout/pedidos/{id}", pedidoId)
+                        .header("X-Session-Id", "sessao-alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clienteEmail").value("alice@example.com"));
+
+        // Sessão Bob NÃO consegue ver pedido de Alice por ID (anti-IDOR) nem na listagem
+        mockMvc.perform(get("/api/v1/checkout/pedidos/{id}", pedidoId)
+                        .header("X-Session-Id", "sessao-bob"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/checkout/pedidos")
+                        .header("X-Session-Id", "sessao-bob"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
     }
 }

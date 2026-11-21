@@ -33,8 +33,12 @@ public class ValidacaoPagamentoHandler implements ValidacaoPedidoHandler {
         String formaPagamento = request.formaPagamento().trim().toUpperCase(Locale.ROOT);
 
         if (!FORMAS_PAGAMENTO_ACEITAS.contains(formaPagamento)) {
+            String safeForma = request.formaPagamento().trim().replaceAll("[\\r\\n\\t]", " ");
+            if (safeForma.length() > 32) {
+                safeForma = safeForma.substring(0, 32) + "...";
+            }
             throw new ValidacaoCheckoutException(
-                    "Forma de pagamento inválida: '" + request.formaPagamento()
+                    "Forma de pagamento inválida: '" + safeForma
                             + "'. Aceitas: BOLETO, CARTAO_CREDITO, PIX."
             );
         }
